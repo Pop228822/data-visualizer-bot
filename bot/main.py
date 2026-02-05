@@ -18,7 +18,7 @@ from bot.states import register_states
 
 async def main():
     # Инициализация бота и диспетчера
-    bot = Bot(token="YOUR_BOT_TOKEN")
+    bot = Bot(token="8375326767:AAFxY6dYPdjObgoF3w-4StiAKo9HCoIxtpc")
     dp = Dispatcher(storage=MemoryStorage())
     
     # Регистрация роутеров и состояний
