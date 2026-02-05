@@ -2,11 +2,18 @@
 Главный файл бота для визуализации Excel данных
 """
 import asyncio
+import os
+import sys
+from pathlib import Path
+
+# Добавляем корневую директорию проекта в путь
+sys.path.insert(0, str(Path(__file__).parent.parent))
+
 from aiogram import Bot, Dispatcher
 from aiogram.fsm.storage.memory import MemoryStorage
 
-from handlers import router
-from states import register_states
+from bot.handlers import router
+from bot.states import register_states
 
 
 async def main():

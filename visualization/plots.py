@@ -4,7 +4,7 @@
 import pandas as pd
 import matplotlib.pyplot as plt
 import seaborn as sns
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, Tuple
 import io
 
 # Настройка стиля
@@ -161,3 +161,33 @@ class PlotGenerator:
         plt.close()
         
         return buf
+    
+    def create_auto_visualization(self, column: str) -> tuple[io.BytesIO, str]:
+        """
+        Автоматически создать подходящую визуализацию для колонки
+        
+        Args:
+            column: Название колонки
+            
+        Returns:
+            Кортеж (BytesIO объект с изображением, название типа визуализации)
+        """
+        import pandas as pd
+        
+        is_numeric = pd.api.types.is_numeric_dtype(self.df[column])
+        unique_count = self.df[column].nunique()
+        
+        if is_numeric:
+            if unique_count > 20:
+                return self.create_histogram(column), "Гистограмма"
+            else:
+                return self.create_bar_plot(column), "Столбчатая диаграмма"
+        else:
+            if unique_count <= 8 and unique_count > 1:
+                return self.create_pie_plot(column), "Круговая диаграмма"
+            else:
+                # Для категорий с большим количеством значений показываем топ-10
+                top_values = self.df[column].value_counts().head(10)
+                temp_df = pd.DataFrame({column: top_values.index, 'count': top_values.values})
+                plot_generator = PlotGenerator(temp_df)
+                return plot_generator.create_bar_plot(column, 'count'), "Столбчатая диаграмма (топ-10)"

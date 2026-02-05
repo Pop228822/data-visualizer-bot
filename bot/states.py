@@ -9,6 +9,7 @@ class DataVisualizationStates(StatesGroup):
     """Состояния для процесса визуализации данных"""
     waiting_for_file = State()
     file_processing = State()
+    choosing_column = State()
     choosing_visualization = State()
     customizing_plot = State()
 
