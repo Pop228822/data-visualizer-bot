@@ -2,6 +2,7 @@
 Обработчики команд и сообщений бота
 """
 import os
+import time
 import pandas as pd
 from aiogram import Router, F
 from aiogram.types import Message, CallbackQuery, BufferedInputFile
@@ -21,6 +22,20 @@ from visualization.recommender import VisualizationRecommender
 from visualization.plots import PlotGenerator
 
 router = Router()
+
+
+def cleanup_temp_files(user_id: int = None):
+    """Очистка временных файлов"""
+    temp_dir = Path(__file__).parent.parent
+    pattern = f"temp_{user_id}_*" if user_id else "temp_*"
+    
+    for file in temp_dir.glob(pattern):
+        try:
+            # Удаляем файлы старше 1 часа
+            if file.stat().st_mtime < (time.time() - 3600):
+                file.unlink()
+        except Exception:
+            pass
 
 
 @router.message(Command("start"))
@@ -62,9 +77,24 @@ async def handle_document(message: Message, state: FSMContext, bot):
     await message.answer("📥 Файл получен! Анализирую структуру данных...")
     
     try:
+        # Очищаем старые временные файлы пользователя перед загрузкой нового
+        data = await state.get_data()
+        old_file_path = data.get("file_path")
+        if old_file_path and os.path.exists(old_file_path):
+            try:
+                os.remove(old_file_path)
+            except:
+                pass
+        
+        cleanup_temp_files(message.from_user.id)
+        
         # Скачиваем файл
         file_info = await bot.get_file(document.file_id)
-        file_path = f"temp_{message.from_user.id}_{document.file_id}.xlsx"
+        # Определяем расширение файла
+        file_ext = '.xlsx' if document.file_name.endswith('.xlsx') else '.xls'
+        # Используем абсолютный путь для временных файлов
+        temp_dir = Path(__file__).parent.parent
+        file_path = str(temp_dir / f"temp_{message.from_user.id}_{document.file_id}{file_ext}")
         await bot.download_file(file_info.file_path, file_path)
         
         # Читаем Excel файл
@@ -97,20 +127,29 @@ async def handle_document(message: Message, state: FSMContext, bot):
         
     except Exception as e:
         await message.answer(f"❌ Ошибка при обработке файла: {str(e)}")
-        await state.clear()
-    finally:
-        # Очищаем временные файлы при ошибке
+        # Удаляем файл только при ошибке
         if 'file_path' in locals() and os.path.exists(file_path):
             try:
                 os.remove(file_path)
             except:
                 pass
+        await state.clear()
 
 
 @router.callback_query(F.data == "cancel")
 async def handle_cancel(callback: CallbackQuery, state: FSMContext):
     """Обработчик отмены"""
     await callback.answer("Отменено")
+    
+    # Очищаем временный файл при отмене
+    data = await state.get_data()
+    file_path = data.get("file_path")
+    if file_path and os.path.exists(file_path):
+        try:
+            os.remove(file_path)
+        except:
+            pass
+    
     await state.clear()
     await callback.message.edit_text("Операция отменена. Отправьте новый Excel файл для анализа.")
 
@@ -133,6 +172,12 @@ async def handle_column_selection(callback: CallbackQuery, state: FSMContext):
     await callback.message.edit_text(f"📊 Создаю визуализацию для колонки: {column_name}")
     
     try:
+        # Проверяем существование файла
+        if not os.path.exists(file_path):
+            await callback.answer("❌ Файл не найден. Пожалуйста, отправьте файл заново.", show_alert=True)
+            await state.clear()
+            return
+        
         # Перечитываем DataFrame из файла
         df = pd.read_excel(file_path)
         
@@ -222,6 +267,12 @@ async def cmd_analyze(message: Message, state: FSMContext):
         return
     
     try:
+        # Проверяем существование файла
+        if not os.path.exists(file_path):
+            await message.answer("❌ Файл не найден. Пожалуйста, отправьте файл заново.")
+            await state.clear()
+            return
+        
         df = pd.read_excel(file_path)
         profiler = DataProfiler(df)
         basic_info = profiler.get_basic_info()
