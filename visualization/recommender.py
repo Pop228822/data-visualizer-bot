@@ -1,6 +1,3 @@
-"""
-Рекомендации по визуализации данных
-"""
 import pandas as pd
 from typing import List, Dict, Any
 

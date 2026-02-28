@@ -205,7 +205,16 @@ async def handle_column_selection(callback: CallbackQuery, state: FSMContext):
         # Определяем тип данных колонки
         column_dtype = str(dtypes.get(column_name, "unknown"))
         is_numeric = pd.api.types.is_numeric_dtype(df[column_name])
-        is_categorical = df[column_name].dtype == 'object' or df[column_name].nunique() <= 10
+        is_datetime = pd.api.types.is_datetime64_any_dtype(df[column_name])
+        # Проверяем, можно ли интерпретировать как даты (для object/string колонок)
+        if not is_datetime and df[column_name].dtype == object:
+            try:
+                sample = pd.to_datetime(df[column_name].dropna().head(100), errors='coerce')
+                is_datetime = sample.notna().sum() >= min(10, len(sample))
+            except Exception:
+                pass
+        unique_count = df[column_name].nunique()
+        is_categorical = df[column_name].dtype == 'object' or unique_count <= 10
         
         # Получаем рекомендацию визуализации
         recommender = VisualizationRecommender(df)
@@ -216,26 +225,34 @@ async def handle_column_selection(callback: CallbackQuery, state: FSMContext):
         plot_type = None
         
         try:
-            if is_numeric:
-                # Для числовых данных - гистограмма или линейный график
-                if df[column_name].nunique() > 20:
+            if is_datetime:
+                # Для дат — агрегация по периоду (день/неделя/месяц)
+                plot_buffer = plot_generator.create_date_plot(column_name)
+                plot_type = "Распределение по датам"
+            elif is_numeric:
+                # Для числовых данных - гистограмма или столбчатая
+                if unique_count > 20:
                     plot_buffer = plot_generator.create_histogram(column_name)
                     plot_type = "Гистограмма"
                 else:
                     plot_buffer = plot_generator.create_bar_plot(column_name)
                     plot_type = "Столбчатая диаграмма"
             elif is_categorical:
-                # Для категориальных данных - круговая или столбчатая диаграмма
-                unique_count = df[column_name].nunique()
+                # Для категориальных данных - круговая или столбчатая (топ категорий)
                 if unique_count <= 8:
                     plot_buffer = plot_generator.create_pie_plot(column_name)
                     plot_type = "Круговая диаграмма"
                 else:
-                    plot_buffer = plot_generator.create_bar_plot(column_name)
-                    plot_type = "Столбчатая диаграмма"
+                    # Много категорий — показываем топ-15 для читаемости
+                    plot_buffer = plot_generator.create_bar_plot(
+                        column_name, max_categories=15
+                    )
+                    plot_type = "Столбчатая диаграмма (топ-15)"
             else:
-                # По умолчанию - столбчатая диаграмма
-                plot_buffer = plot_generator.create_bar_plot(column_name)
+                # По умолчанию — столбчатая с лимитом категорий
+                plot_buffer = plot_generator.create_bar_plot(
+                    column_name, max_categories=15
+                )
                 plot_type = "Столбчатая диаграмма"
         except Exception as e:
             raise ValueError(f"Ошибка при создании графика: {str(e)}")
